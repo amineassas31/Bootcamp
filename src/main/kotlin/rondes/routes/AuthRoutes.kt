@@ -18,4 +18,16 @@ fun Route.authRoutes() {
             LoginResponse(token = token, guardName = guard.fullName, role = guard.role.name, expiresAt = expiresAt.toString()),
         )
     }
+
+    post("/api/auth/logout") {
+        val guard = call.authedGuard()
+        // On recupere le token depuis l'en-tete via authedGuard, 
+        // mais pour supprimer la session il nous faut le token brut.
+        val authHeader = call.request.headers["Authorization"]
+        val token = authHeader?.removePrefix("Bearer ")?.trim()
+        if (token != null) {
+            AuthService.logout(token)
+        }
+        call.respond(HttpStatusCode.NoContent)
+    }
 }

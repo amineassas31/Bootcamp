@@ -31,6 +31,10 @@ class ApiClient(private val session: Session) {
         )
     }
 
+    suspend fun logout(): Unit = withContext(Dispatchers.IO) {
+        request("POST", "/api/auth/logout", JSONObject(), authenticated = true)
+    }
+
     suspend fun scan(tagUid: String, scannedAtIso: String): ScanResult = withContext(Dispatchers.IO) {
         val body = JSONObject().put("tagUid", tagUid).put("scannedAt", scannedAtIso)
         val response = request("POST", "/api/scan", body, authenticated = true)

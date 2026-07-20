@@ -22,6 +22,17 @@ function clearSession() {
     localStorage.removeItem(RONDES_NAME_KEY);
 }
 
+async function logout() {
+    try {
+        await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {
+        console.error("Erreur lors de la deconnexion serveur", e);
+    } finally {
+        clearSession();
+        window.location.href = "login.html";
+    }
+}
+
 /** Redirige vers login.html si aucune session, ou si le role n'est pas autorise sur cette page. */
 function requireAuth(allowedRoles) {
     const session = getSession();
@@ -68,7 +79,7 @@ function renderHeader(elementId, title) {
         <h1>${title}</h1>
         <div>
             <span class="pill">${session.name || ""} (${session.role || ""})</span>
-            <button class="secondary" onclick="clearSession(); window.location.href='login.html'">Deconnexion</button>
+            <button class="secondary" onclick="logout()">Deconnexion</button>
         </div>
     `;
 }

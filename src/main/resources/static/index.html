@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><h1>Supervision des rondes NFC</h1></header>
+<header id="header"></header>
 <main>
     <div class="card">
         <h2>Accueil</h2>
@@ -18,5 +18,16 @@
         <p><a href="enroll.html">Associer un patch a une salle (admin)</a></p>
     </div>
 </main>
+<script src="app-common.js"></script>
+<script>
+    // Sur l'index, on n'oblige pas la connexion (requireAuth),
+    // mais on affiche l'entête si l'utilisateur est déjà là.
+    const session = getSession();
+    if (session.token) {
+        renderHeader("header", "Supervision des rondes NFC");
+    } else {
+        document.getElementById("header").innerHTML = "<h1>Supervision des rondes NFC</h1><div><a href='login.html' class='badge VERT'>Connexion</a></div>";
+    }
+</script>
 </body>
 </html>
