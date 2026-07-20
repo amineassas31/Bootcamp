@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Supervision - PC securite</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="header"></header>
+<main>
+    <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center;">
+            <h2>Etat des salles</h2>
+            <span id="wsStatus" class="pill"></span>
+        </div>
+        <table>
+            <thead>
+            <tr><th>Salle</th><th>Batiment / etage</th><th>Dernier controle</th><th>Par</th><th>Depuis</th><th>Etat</th></tr>
+            </thead>
+            <tbody id="roomsBody"></tbody>
+        </table>
+    </div>
+</main>
+<script src="app-common.js"></script>
+<script>
+    const session = requireAuth(["CHEF_DE_POSTE", "DIRECTION"]);
+    renderHeader("header", "Supervision - PC securite");
+
+    let rooms = [];
+
+    function formatElapsed(minutes) {
+        if (minutes === null || minutes === undefined) return "jamais controlee";
+        if (minutes < 60) return minutes + " min";
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return h + "h" + String(m).padStart(2, "0");
+    }
+
+    function levelFor(room) {
+        if (room.patchDamaged) return "ROUGE";
+        if (room.lastScanAt === null || room.lastScanAt === undefined) return "ROUGE";
+        const elapsedMin = Math.floor((Date.now() - new Date(room.lastScanAt).getTime()) / 60000);
+        if (elapsedMin < room.orangeThresholdMinutes) return "VERT";
+        if (elapsedMin < room.redThresholdMinutes) return "ORANGE";
+        return "ROUGE";
+    }
+
+    function currentElapsed(room) {
+        if (!room.lastScanAt) return null;
+        return Math.floor((Date.now() - new Date(room.lastScanAt).getTime()) / 60000);
+    }
+
+    function render() {
+        const body = document.getElementById("roomsBody");
+        const sorted = [...rooms].sort((a, b) => (currentElapsed(b) ?? Infinity) - (currentElapsed(a) ?? Infinity));
+        body.innerHTML = sorted.map(r => {
+            const level = levelFor(r);
+            const label = r.patchDamaged ? "Patch signale endommage" : (r.lastGuardName || "-");
+            return `
+                <tr class="row-${level}">
+                    <td>${r.name}</td>
+                    <td>${[r.building, r.floor].filter(Boolean).join(" / ")}</td>
+                    <td>${r.lastScanAt ? new Date(r.lastScanAt).toLocaleString("fr-FR") : "-"}</td>
+                    <td>${label}</td>
+                    <td>${formatElapsed(currentElapsed(r))}</td>
+                    <td><span class="badge ${level}">${level}</span></td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    async function loadInitial() {
+        rooms = await apiFetch("/api/rooms");
+        render();
+    }
+
+    function connectWs() {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const url = proto + "//" + window.location.host + "/ws/supervision?token=" + encodeURIComponent(session.token);
+        const ws = new WebSocket(url);
+        const wsStatusEl = document.getElementById("wsStatus");
+        ws.onopen = () => { wsStatusEl.textContent = "temps reel connecte"; };
+        ws.onmessage = (evt) => {
+            rooms = JSON.parse(evt.data);
+            render();
+        };
+        ws.onclose = () => {
+            wsStatusEl.textContent = "deconnecte, nouvelle tentative...";
+            setTimeout(connectWs, 3000);
+        };
+        ws.onerror = () => ws.close();
+    }
+
+    loadInitial();
+    connectWs();
+    setInterval(render, 1000); // fait avancer l'affichage du temps ecoule entre deux scans, sans appel serveur
+</script>
+</body>
+</html>

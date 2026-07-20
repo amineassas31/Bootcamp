@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Association patch / salle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="header"></header>
+<main>
+    <div class="card">
+        <h2>Associer un patch NFC a une salle</h2>
+        <label for="roomSelect">Salle</label>
+        <select id="roomSelect"></select>
+        <button id="scanBtn" class="big-btn">Scanner le patch a associer</button>
+        <div id="status" class="status-line"></div>
+    </div>
+
+    <div class="card">
+        <h3>Patchs enregistres</h3>
+        <table>
+            <thead><tr><th>Salle</th><th>Identifiant</th><th>Etat</th></tr></thead>
+            <tbody id="patchTableBody"></tbody>
+        </table>
+    </div>
+</main>
+<script src="app-common.js"></script>
+<script>
+    requireAuth(["CHEF_DE_POSTE", "DIRECTION"]);
+    renderHeader("header", "Association patch / salle");
+
+    const statusEl = document.getElementById("status");
+    let rooms = [];
+
+    async function loadRooms() {
+        rooms = await apiFetch("/api/rooms");
+        const select = document.getElementById("roomSelect");
+        select.innerHTML = rooms.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+    }
+
+    async function loadPatches() {
+        const patches = await apiFetch("/api/patches");
+        const body = document.getElementById("patchTableBody");
+        body.innerHTML = patches.map(p => `
+            <tr>
+                <td>${p.roomName || "(non associe)"}</td>
+                <td>${p.tagUid}</td>
+                <td>${p.damaged ? "Endommage" : (p.active ? "Actif" : "Inactif")}</td>
+            </tr>
+        `).join("");
+    }
+
+    async function associate(tagUid) {
+        const roomId = parseInt(document.getElementById("roomSelect").value, 10);
+        try {
+            await apiFetch("/api/patches/enroll", {
+                method: "POST",
+                body: JSON.stringify({ tagUid, roomId }),
+            });
+            statusEl.className = "status-line ok";
+            statusEl.textContent = "Patch associe";
+            await loadPatches();
+        } catch (e) {
+            statusEl.className = "status-line err";
+            statusEl.textContent = "Erreur : " + e.message;
+        }
+    }
+
+    document.getElementById("scanBtn").addEventListener("click", async () => {
+        if (!("NDEFReader" in window)) {
+            const manual = prompt("Web NFC indisponible. Identifiant du patch (secours demo) :");
+            if (manual) await associate(manual.trim());
+            return;
+        }
+        try {
+            const ndef = new NDEFReader();
+            await ndef.scan();
+            statusEl.className = "status-line";
+            statusEl.textContent = "Approchez le patch a associer...";
+            ndef.onreading = (event) => associate(event.serialNumber);
+        } catch (e) {
+            statusEl.className = "status-line err";
+            statusEl.textContent = "Erreur NFC : " + e.message;
+        }
+    });
+
+    loadRooms();
+    loadPatches();
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>Connexion</h1></header>
+<main>
+    <div class="card">
+        <label for="badge">Badge</label>
+        <input id="badge" placeholder="ex: G001" autocomplete="username">
+        <label for="pin">Code PIN</label>
+        <input id="pin" type="password" placeholder="ex: 2222" autocomplete="current-password">
+        <button class="big-btn" onclick="login()">Se connecter</button>
+        <div id="status" class="status-line"></div>
+    </div>
+</main>
+<script src="app-common.js"></script>
+<script>
+    async function login() {
+        const badge = document.getElementById("badge").value.trim();
+        const pin = document.getElementById("pin").value.trim();
+        const status = document.getElementById("status");
+        status.textContent = "Connexion...";
+        status.className = "status-line";
+        try {
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ badge, pin }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.message || ("Erreur " + res.status));
+            }
+            const data = await res.json();
+            setSession(data.token, data.role, data.guardName);
+            status.textContent = "Connecte en tant que " + data.guardName;
+            status.className = "status-line ok";
+            const params = new URLSearchParams(window.location.search);
+            const next = params.get("next") || "index.html";
+            window.location.href = next;
+        } catch (e) {
+            status.textContent = e.message;
+            status.className = "status-line err";
+        }
+    }
+    document.getElementById("pin").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+    });
+</script>
+</body>
+</html>
