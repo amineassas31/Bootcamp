@@ -3,29 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Connexion</title>
+    <title>Connexion - Rondes NFC</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
-<header><h1>Connexion</h1></header>
-<main>
+<body style="display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;">
+<main style="width: 100%; max-width: 400px; padding: 0;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="background: linear-gradient(to right, var(--accent), #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 2rem; font-weight: 700;">Rondes NFC</h1>
+        <p class="pill">Authentification requise</p>
+    </div>
     <div class="card">
-        <label for="badge">Badge</label>
-        <input id="badge" placeholder="ex: G001" autocomplete="username">
-        <label for="pin">Code PIN</label>
-        <input id="pin" type="password" placeholder="ex: 2222" autocomplete="current-password">
+        <div style="margin-bottom: 20px;">
+            <label for="badge">Identifiant Badge</label>
+            <input id="badge" placeholder="ex: G001" autocomplete="username">
+        </div>
+        <div style="margin-bottom: 24px;">
+            <label for="pin">Code PIN</label>
+            <input id="pin" type="password" placeholder="••••" autocomplete="current-password">
+        </div>
         <button class="big-btn" onclick="login()">Se connecter</button>
         <div id="status" class="status-line"></div>
     </div>
+    <p style="text-align: center; margin-top: 16px;">
+        <a href="index.html" style="text-decoration: none; font-size: 0.9rem; color: var(--muted);">&larr; Retour à l'accueil</a>
+    </p>
 </main>
+
 <script src="app-common.js"></script>
 <script>
     async function login() {
         const badge = document.getElementById("badge").value.trim();
         const pin = document.getElementById("pin").value.trim();
         const status = document.getElementById("status");
-        status.textContent = "Connexion...";
+
+        if (!badge || !pin) {
+            status.textContent = "Veuillez remplir tous les champs.";
+            status.className = "status-line err";
+            return;
+        }
+
+        status.textContent = "Connexion en cours...";
         status.className = "status-line";
+
         try {
             const res = await fetch("/api/auth/login", {
                 method: "POST",
@@ -38,16 +58,22 @@
             }
             const data = await res.json();
             setSession(data.token, data.role, data.guardName);
-            status.textContent = "Connecte en tant que " + data.guardName;
+
+            status.textContent = "Bienvenue, " + data.guardName;
             status.className = "status-line ok";
+
             const params = new URLSearchParams(window.location.search);
             const next = params.get("next") || "index.html";
-            window.location.href = next;
+
+            setTimeout(() => {
+                window.location.href = next;
+            }, 500);
         } catch (e) {
             status.textContent = e.message;
             status.className = "status-line err";
         }
     }
+
     document.getElementById("pin").addEventListener("keydown", (e) => {
         if (e.key === "Enter") login();
     });

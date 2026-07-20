@@ -75,11 +75,18 @@ async function apiFetch(path, options = {}) {
 function renderHeader(elementId, title) {
     const session = getSession();
     const el = document.getElementById(elementId);
+    if (!el) return;
+
     el.innerHTML = `
-        <h1>${title}</h1>
-        <div>
-            <span class="pill">${session.name || ""} (${session.role || ""})</span>
-            <button class="secondary" onclick="logout()">Deconnexion</button>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="index.html" style="text-decoration: none;"><h1>${title}</h1></a>
+        </div>
+        <div class="header-actions" style="display: flex; align-items: center; gap: 16px;">
+            <div style="text-align: right; line-height: 1.2;">
+                <div style="font-weight: 600; font-size: 0.9rem;">${session.name || "Utilisateur"}</div>
+                <div class="pill" style="font-size: 0.75rem;">${session.role || ""}</div>
+            </div>
+            <button class="secondary" onclick="logout()" style="padding: 8px 12px; font-size: 0.85rem;">Déconnexion</button>
         </div>
     `;
 }

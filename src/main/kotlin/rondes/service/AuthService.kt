@@ -1,6 +1,7 @@
 package rondes.service
 
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.mindrot.jbcrypt.BCrypt
 import rondes.db.Guards
 import rondes.db.Sessions
@@ -73,8 +74,8 @@ object AuthService {
             ?: throw UnauthorizedException("Session invalide")
 
         if (session[Sessions.expiresAt].isBefore(Instant.now())) {
-            // Utilisation de .eq() explicite pour eviter les problemes de resolution d'operateur
-            Sessions.deleteWhere { it.token.eq(token) }
+            // Utilisation de la table directement pour eviter les erreurs de resolution sur 'it'
+            Sessions.deleteWhere { Sessions.token eq token }
             throw UnauthorizedException("Session expiree")
         }
 
@@ -85,8 +86,8 @@ object AuthService {
     }
 
     suspend fun logout(sessionToken: String) = dbQuery {
-        // Utilisation de .eq() explicite ici aussi
-        Sessions.deleteWhere { it.token.eq(sessionToken) }
+        // Utilisation de la table directement pour eviter les erreurs de resolution sur 'it'
+        Sessions.deleteWhere { Sessions.token eq sessionToken }
     }
 
     private fun generateToken(): String {

@@ -3,26 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scan de ronde</title>
+    <title>Scan de ronde - Rondes NFC</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <header id="header"></header>
 <main>
-    <div class="card">
-        <h2>Controle de salle</h2>
-        <p class="pill">Approchez le telephone du patch NFC de la salle a controler.</p>
-        <button id="activateBtn" class="big-btn">Activer le lecteur NFC</button>
-        <div id="status" class="status-line"></div>
-        <div id="queueInfo" class="pill"></div>
+    <div class="card" style="text-align: center; padding: 40px 24px;">
+        <div style="font-size: 3rem; margin-bottom: 20px;">🛡️</div>
+        <h2 style="margin-top: 0;">Contrôle de passage</h2>
+        <p class="pill" style="margin-bottom: 32px;">Approchez votre téléphone du patch NFC de la salle pour valider votre passage.</p>
+
+        <button id="activateBtn" class="big-btn" style="max-width: 300px; margin: 0 auto;">
+            Activer le lecteur NFC
+        </button>
+
+        <div id="status" class="status-line" style="max-width: 400px; margin: 20px auto 0;"></div>
+        <div id="queueInfo" class="badge" style="margin-top: 20px; background: rgba(245, 158, 11, 0.1); color: var(--orange); border: 1px solid rgba(245, 158, 11, 0.2); display: none;"></div>
     </div>
 
-    <div class="card" id="fallbackCard" style="display:none">
-        <h3>Secours demo (hors-ligne uniquement, a retirer en production)</h3>
-        <p class="pill">Web NFC indisponible sur ce navigateur. Saisie manuelle pour la demonstration.</p>
-        <label for="manualUid">Identifiant du patch</label>
-        <input id="manualUid" placeholder="ex: 04:A2:B3:C4">
-        <button onclick="handleTagRead(document.getElementById('manualUid').value.trim())">Valider (secours)</button>
+    <div class="card" id="fallbackCard" style="display:none; border-style: dashed; background: rgba(30, 41, 59, 0.5);">
+        <h3 style="color: var(--muted); font-size: 1rem;">Mode de secours</h3>
+        <p class="pill" style="margin-bottom: 16px;">Web NFC indisponible ou désactivé. Saisie manuelle pour démonstration.</p>
+        <div style="display: flex; gap: 10px;">
+            <input id="manualUid" placeholder="ID du patch (ex: 04:A2:B3...)" style="flex: 1;">
+            <button onclick="handleTagRead(document.getElementById('manualUid').value.trim())" style="white-space: nowrap;">Valider</button>
+        </div>
     </div>
 </main>
 <script src="app-common.js"></script>
@@ -40,7 +47,12 @@
     function writeQueue(q) { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
     function refreshQueueInfo() {
         const q = readQueue();
-        queueInfoEl.textContent = q.length > 0 ? q.length + " scan(s) en attente de synchronisation" : "";
+        if (q.length > 0) {
+            queueInfoEl.textContent = "⏳ " + q.length + " scan(s) en attente de synchronisation";
+            queueInfoEl.style.display = "inline-flex";
+        } else {
+            queueInfoEl.style.display = "none";
+        }
     }
     refreshQueueInfo();
 
@@ -55,24 +67,28 @@
         if (!tagUid) return;
         const scannedAt = new Date().toISOString();
         statusEl.className = "status-line";
-        statusEl.textContent = "Envoi...";
+        statusEl.textContent = "Envoi en cours...";
         try {
             const result = await sendScan(tagUid, scannedAt);
             statusEl.className = "status-line ok";
-            statusEl.textContent = "OK : " + result.roomName + " controlee (" + result.guardName + ")" +
-                (result.offlineSync ? " - synchronise hors-ligne" : "");
+            statusEl.innerHTML = `<strong>Succès !</strong><br>${result.roomName} contrôlée par ${result.guardName}` +
+                (result.offlineSync ? "<br><small>Synchronisé depuis le mode hors-ligne</small>" : "");
+
+            // Petit feedback visuel
+            document.body.style.backgroundColor = "#064e3b";
+            setTimeout(() => document.body.style.backgroundColor = "var(--bg)", 500);
+
         } catch (e) {
-            if (e instanceof TypeError) {
-                // pas de reseau : mise en file locale, horodatage capture au moment du scan
+            if (e instanceof TypeError || e.message.includes("Failed to fetch")) {
                 const q = readQueue();
                 q.push({ tagUid, scannedAt });
                 writeQueue(q);
                 refreshQueueInfo();
                 statusEl.className = "status-line err";
-                statusEl.textContent = "Hors ligne : scan mis en file, sera envoye au retour du reseau";
+                statusEl.textContent = "Hors ligne : Scan enregistré localement. Il sera envoyé dès le retour du réseau.";
             } else {
                 statusEl.className = "status-line err";
-                statusEl.textContent = "Refuse : " + e.message;
+                statusEl.textContent = "Erreur : " + e.message;
             }
         }
     }
@@ -98,7 +114,7 @@
     document.getElementById("activateBtn").addEventListener("click", async () => {
         if (!("NDEFReader" in window)) {
             statusEl.className = "status-line err";
-            statusEl.textContent = "Web NFC non supporte (utilisez Chrome sur Android avec NFC active)";
+            statusEl.textContent = "Web NFC non supporté sur ce navigateur.";
             document.getElementById("fallbackCard").style.display = "block";
             return;
         }
@@ -106,17 +122,22 @@
             const ndef = new NDEFReader();
             await ndef.scan();
             statusEl.className = "status-line ok";
-            statusEl.textContent = "Lecteur actif, approchez un patch...";
+            statusEl.textContent = "Lecteur actif. Approchez un patch NFC...";
+
+            document.getElementById("activateBtn").textContent = "Lecteur en écoute...";
+            document.getElementById("activateBtn").disabled = true;
+            document.getElementById("activateBtn").style.opacity = "0.7";
+
             ndef.onreading = (event) => {
                 handleTagRead(event.serialNumber);
             };
             ndef.onreadingerror = () => {
                 statusEl.className = "status-line err";
-                statusEl.textContent = "Lecture illisible, reessayez";
+                statusEl.textContent = "Lecture échouée. Veuillez réessayer.";
             };
         } catch (e) {
             statusEl.className = "status-line err";
-            statusEl.textContent = "Impossible d'activer le NFC : " + e.message;
+            statusEl.textContent = "Erreur d'activation : " + e.message;
             document.getElementById("fallbackCard").style.display = "block";
         }
     });

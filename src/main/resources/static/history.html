@@ -3,54 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Historique des passages</title>
+    <title>Historique des passages - Rondes NFC</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <header id="header"></header>
 <main>
     <div class="card">
-        <h2>Historique</h2>
-        <p class="pill" id="scopeInfo"></p>
-        <label for="roomFilter">Salle (optionnel)</label>
-        <select id="roomFilter"><option value="">Toutes</option></select>
-        <button onclick="load()">Filtrer</button>
-        <table>
-            <thead><tr><th>Date</th><th>Salle</th><th>Gardien</th><th>Origine</th></tr></thead>
-            <tbody id="body"></tbody>
-        </table>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <h2 style="margin: 0;">Historique des passages</h2>
+            <span class="pill" id="scopeInfo"></span>
+        </div>
+
+        <div id="filterSection" style="display: flex; gap: 12px; margin-bottom: 24px; align-items: flex-end; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <label for="roomFilter" style="margin-top: 0;">Filtrer par salle</label>
+                <select id="roomFilter">
+                    <option value="">Toutes les salles</option>
+                </select>
+            </div>
+            <button onclick="load()" style="height: 46px;">Actualiser</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date et Heure</th>
+                        <th>Salle</th>
+                        <th>Gardien</th>
+                        <th>Origine</th>
+                    </tr>
+                </thead>
+                <tbody id="body">
+                    <tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--muted);">Chargement de l'historique...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </main>
 <script src="app-common.js"></script>
 <script>
     const session = requireAuth(["GARDIEN", "CHEF_DE_POSTE", "DIRECTION"]);
-    renderHeader("header", "Historique des passages");
+    renderHeader("header", "Historique");
+
     document.getElementById("scopeInfo").textContent = session.role === "GARDIEN"
-        ? "Vous consultez uniquement vos propres passages."
-        : "Vue complete (chef de poste / direction).";
+        ? "🔒 Vos passages uniquement"
+        : "👁️ Vue globale active";
 
     async function loadRoomsFilter() {
         if (session.role === "GARDIEN") {
-            document.getElementById("roomFilter").style.display = "none";
+            document.getElementById("filterSection").style.display = "none";
             return;
         }
-        const rooms = await apiFetch("/api/rooms");
-        const select = document.getElementById("roomFilter");
-        select.innerHTML += rooms.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+        try {
+            const rooms = await apiFetch("/api/rooms");
+            const select = document.getElementById("roomFilter");
+            select.innerHTML += rooms.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+        } catch (e) { console.error(e); }
     }
 
     async function load() {
         const roomId = document.getElementById("roomFilter").value;
         const query = roomId ? ("?roomId=" + roomId) : "";
-        const entries = await apiFetch("/api/history" + query);
-        document.getElementById("body").innerHTML = entries.map(e => `
-            <tr>
-                <td>${new Date(e.scannedAt).toLocaleString("fr-FR")}</td>
-                <td>${e.roomName}</td>
-                <td>${e.guardName}</td>
-                <td>${e.offlineSync ? "Synchro hors-ligne" : "Direct"}</td>
-            </tr>
-        `).join("");
+        try {
+            const entries = await apiFetch("/api/history" + query);
+            const body = document.getElementById("body");
+
+            if (entries.length === 0) {
+                body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--muted);">Aucun passage enregistré.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = entries.map(e => `
+                <tr>
+                    <td style="font-weight: 500;">${new Date(e.scannedAt).toLocaleString("fr-FR")}</td>
+                    <td><strong>${e.roomName}</strong></td>
+                    <td>${e.guardName}</td>
+                    <td>
+                        <span class="badge" style="background: ${e.offlineSync ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)'}; color: ${e.offlineSync ? 'var(--orange)' : 'var(--accent)'};">
+                            ${e.offlineSync ? "Décalé (Hors-ligne)" : "Direct"}
+                        </span>
+                    </td>
+                </tr>
+            `).join("");
+        } catch (e) {
+            document.getElementById("body").innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--rouge); padding: 20px;">Erreur : ${e.message}</td></tr>`;
+        }
     }
 
     loadRoomsFilter().then(load);
