@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <uses-feature
+        android:name="android.hardware.nfc"
+        android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:roundIcon="@android:drawable/ic_menu_compass"
+        android:theme="@style/Theme.RondesNfc"
+        android:usesCleartextTraffic="true">
+        <!--
+            usesCleartextTraffic=true : demo/POC uniquement, pour parler en http:// direct
+            au serveur sur le reseau local du musee sans certificat TLS. A retirer (ou a
+            restreindre via un network_security_config scope a l'IP du serveur) des que le
+            backend est expose derriere un reverse proxy TLS en production (cf. docs/SECURITY.md).
+        -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false" />
+    </application>
+</manifest>

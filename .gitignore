@@ -7,6 +7,14 @@ data/
 *.log
 dependency-reduced-pom.xml
 
+### Android ###
+android/local.properties
+android/.gradle/
+android/**/build/
+!android/**/src/**/build/
+*.apk
+*.aab
+
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/jarRepositories.xml
