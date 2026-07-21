@@ -3,38 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Supervision - PC securite</title>
+    <title>Supervision - PC Sécurité</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <header id="header"></header>
 <main>
     <div class="card">
-        <div style="display:flex; justify-content: space-between; align-items:center;">
-            <h2>Etat des salles</h2>
-            <span id="wsStatus" class="pill"></span>
+        <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">État des salles en temps réel</h2>
+            <div id="wsStatus" class="badge" style="background: rgba(56, 189, 248, 0.1); color: var(--accent);">Connexion...</div>
         </div>
-        <table>
-            <thead>
-            <tr><th>Salle</th><th>Batiment / etage</th><th>Dernier controle</th><th>Par</th><th>Depuis</th><th>Etat</th></tr>
-            </thead>
-            <tbody id="roomsBody"></tbody>
-        </table>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                <tr>
+                    <th>Salle</th>
+                    <th>Bâtiment / Étage</th>
+                    <th>Dernier contrôle</th>
+                    <th>Par</th>
+                    <th>Depuis</th>
+                    <th>État</th>
+                </tr>
+                </thead>
+                <tbody id="roomsBody">
+                    <tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--muted);">Chargement des données...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </main>
 <script src="app-common.js"></script>
 <script>
     const session = requireAuth(["CHEF_DE_POSTE", "DIRECTION"]);
-    renderHeader("header", "Supervision - PC securite");
+    renderHeader("header", "Supervision");
 
     let rooms = [];
 
     function formatElapsed(minutes) {
-        if (minutes === null || minutes === undefined) return "jamais controlee";
+        if (minutes === null || minutes === undefined) return "Aucun";
+        if (minutes < 1) return "À l'instant";
         if (minutes < 60) return minutes + " min";
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
-        return h + "h" + String(m).padStart(2, "0");
+        return h + "h " + String(m).padStart(2, "0") + "m";
     }
 
     function levelFor(room) {
@@ -53,17 +67,28 @@
 
     function render() {
         const body = document.getElementById("roomsBody");
-        const sorted = [...rooms].sort((a, b) => (currentElapsed(b) ?? Infinity) - (currentElapsed(a) ?? Infinity));
+        if (rooms.length === 0) return;
+
+        const sorted = [...rooms].sort((a, b) => {
+            const levelMap = { "ROUGE": 0, "ORANGE": 1, "VERT": 2 };
+            const levelA = levelMap[levelFor(a)];
+            const levelB = levelMap[levelFor(b)];
+            if (levelA !== levelB) return levelA - levelB;
+            return (currentElapsed(b) ?? Infinity) - (currentElapsed(a) ?? Infinity);
+        });
+
         body.innerHTML = sorted.map(r => {
             const level = levelFor(r);
-            const label = r.patchDamaged ? "Patch signale endommage" : (r.lastGuardName || "-");
+            const label = r.patchDamaged ? "⚠️ Patch endommagé" : (r.lastGuardName || "-");
+            const elapsed = currentElapsed(r);
+
             return `
                 <tr class="row-${level}">
-                    <td>${r.name}</td>
+                    <td style="font-weight: 600;">${r.name}</td>
                     <td>${[r.building, r.floor].filter(Boolean).join(" / ")}</td>
-                    <td>${r.lastScanAt ? new Date(r.lastScanAt).toLocaleString("fr-FR") : "-"}</td>
+                    <td style="font-size: 0.85rem; color: var(--muted);">${r.lastScanAt ? new Date(r.lastScanAt).toLocaleString("fr-FR", {hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'}) : "-"}</td>
                     <td>${label}</td>
-                    <td>${formatElapsed(currentElapsed(r))}</td>
+                    <td style="font-weight: 500;">${formatElapsed(elapsed)}</td>
                     <td><span class="badge ${level}">${level}</span></td>
                 </tr>
             `;
@@ -71,8 +96,12 @@
     }
 
     async function loadInitial() {
-        rooms = await apiFetch("/api/rooms");
-        render();
+        try {
+            rooms = await apiFetch("/api/rooms");
+            render();
+        } catch (e) {
+            console.error(e);
+        }
     }
 
     function connectWs() {
@@ -80,13 +109,18 @@
         const url = proto + "//" + window.location.host + "/ws/supervision?token=" + encodeURIComponent(session.token);
         const ws = new WebSocket(url);
         const wsStatusEl = document.getElementById("wsStatus");
-        ws.onopen = () => { wsStatusEl.textContent = "temps reel connecte"; };
+
+        ws.onopen = () => {
+            wsStatusEl.textContent = "● Temps réel actif";
+            wsStatusEl.style.color = "#4ade80";
+        };
         ws.onmessage = (evt) => {
             rooms = JSON.parse(evt.data);
             render();
         };
         ws.onclose = () => {
-            wsStatusEl.textContent = "deconnecte, nouvelle tentative...";
+            wsStatusEl.textContent = "○ Déconnecté";
+            wsStatusEl.style.color = "var(--rouge)";
             setTimeout(connectWs, 3000);
         };
         ws.onerror = () => ws.close();
@@ -94,7 +128,7 @@
 
     loadInitial();
     connectWs();
-    setInterval(render, 1000); // fait avancer l'affichage du temps ecoule entre deux scans, sans appel serveur
+    setInterval(render, 10000); // Rafraîchissement du temps toutes les 10s
 </script>
 </body>
 </html>

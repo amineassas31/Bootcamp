@@ -5,18 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Supervision des rondes NFC</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-<header><h1>Supervision des rondes NFC</h1></header>
+<header id="header"></header>
 <main>
-    <div class="card">
-        <h2>Accueil</h2>
-        <p class="pill">Selectionnez votre poste de travail.</p>
-        <p><a href="scan.html">Scanner une salle (gardien)</a></p>
-        <p><a href="dashboard.html">Ecran de supervision (PC securite)</a></p>
-        <p><a href="history.html">Historique des passages</a></p>
-        <p><a href="enroll.html">Associer un patch a une salle (admin)</a></p>
+    <div style="margin-bottom: 32px; text-align: center;">
+        <h2 style="font-size: 2rem; margin-bottom: 8px;">Tableau de bord</h2>
+        <p class="pill" style="font-size: 1rem;">Bienvenue sur le système de supervision des rondes. Sélectionnez une action ci-dessous.</p>
+    </div>
+
+    <div class="grid-actions">
+        <a href="scan.html" class="action-card">
+            <h3>🛡️ Gardien</h3>
+            <p>Scanner une salle et valider un passage lors d'une ronde.</p>
+        </a>
+        <a href="dashboard.html" class="action-card">
+            <h3>📊 Supervision</h3>
+            <p>Vue en temps réel de l'état des salles pour le PC sécurité.</p>
+        </a>
+        <a href="history.html" class="action-card">
+            <h3>📜 Historique</h3>
+            <p>Consulter les derniers passages et les rapports de ronde.</p>
+        </a>
+        <a href="enroll.html" class="action-card">
+            <h3>⚙️ Administration</h3>
+            <p>Gérer les salles, les gardiens et associer les patches NFC.</p>
+        </a>
     </div>
 </main>
+<script src="app-common.js"></script>
+<script>
+    const session = getSession();
+    if (session.token) {
+        renderHeader("header", "Rondes NFC");
+    } else {
+        document.getElementById("header").innerHTML = "<h1>Rondes NFC</h1><div class='header-actions'><a href='login.html' class='badge VERT' style='text-decoration:none'>Connexion</a></div>";
+    }
+</script>
 </body>
 </html>

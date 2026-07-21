@@ -37,8 +37,16 @@ class ScanActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
         binding.guardLabel.text = "${session.guardName} (${session.role})"
         binding.logoutButton.setOnClickListener {
-            session.clear()
-            goToLogin()
+            lifecycleScope.launch {
+                try {
+                    api.logout()
+                } catch (e: Exception) {
+                    // On ignore l'erreur reseau a la deconnexion pour permettre
+                    // de changer de compte meme hors-ligne
+                }
+                session.clear()
+                goToLogin()
+            }
         }
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
