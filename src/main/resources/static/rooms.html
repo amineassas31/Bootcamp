@@ -178,7 +178,7 @@
     };
 
     async function deleteRoom(id, name) {
-        if (!confirm(`Voulez-vous vraiment supprimer la salle "${name}" ?\nLes scans et patches associés seront supprimés ou détachés.`)) return;
+        if (!confirm(`Voulez-vous vraiment supprimer la salle "${name}" ?\nLes patches associés seront détachés.`)) return;
         try {
             await apiFetch(`/api/rooms/${id}`, { method: "DELETE" });
             loadRooms();

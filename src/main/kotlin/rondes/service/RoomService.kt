@@ -1,9 +1,7 @@
 package rondes.service
 
-import org.jetbrains.exposed.sql.SortOrder
-import org.jetbrains.exposed.sql.insertAndGetId
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import rondes.db.Guards
 import rondes.db.Patches
 import rondes.db.Rooms
@@ -19,33 +17,34 @@ import java.time.Instant
 object RoomService {
 
     suspend fun listStatuses(): List<RoomStatusDto> = dbQuery {
-        val rooms = Rooms.selectAll().toList()
+        val roomsList = Rooms.selectAll().toList()
 
-        // dernier scan par salle (taille de musee raisonnable pour une jointure en memoire ; a revoir avec une
-        // sous-requete SQL agregee si le nombre de rondes explose en production multi-site).
+        // On récupère le dernier scan par salle en mémoire pour éviter les conflits d'ID lors des jointures
         val lastScanByRoom = Scans
             .selectAll()
             .orderBy(Scans.scannedAt, SortOrder.DESC)
+            .toList()
             .groupBy { it[Scans.roomId].value }
-            .mapValues { (_, rows) -> rows.first() }
+            .mapValues { it.value.first() }
 
         val guardNames = Guards.selectAll().associate { it[Guards.id].value to it[Guards.fullName] }
 
-        val patchByRoom = Patches.selectAll()
+        val patchesByRoom = Patches.selectAll()
             .where { Patches.active eq true }
             .associateBy { it[Patches.roomId]?.value }
 
         val now = Instant.now()
 
-        rooms.map { room ->
+        roomsList.map { room ->
             val roomId = room[Rooms.id].value
             val lastScan = lastScanByRoom[roomId]
             val elapsedMinutes = lastScan?.let { Duration.between(it[Scans.scannedAt], now).toMinutes() }
             val orangeThreshold = room[Rooms.orangeThresholdMinutes]
             val redThreshold = room[Rooms.redThresholdMinutes]
-            val patch = patchByRoom[roomId]
+            val patch = patchesByRoom[roomId]
+            
             val level = when {
-                patch?.get(Patches.damaged) == true -> "ROUGE" // patch signale endommage : jamais masque par un scan passe
+                patch?.get(Patches.damaged) == true -> "ROUGE"
                 elapsedMinutes == null -> "ROUGE"
                 elapsedMinutes < orangeThreshold -> "VERT"
                 elapsedMinutes < redThreshold -> "ORANGE"
@@ -80,7 +79,7 @@ object RoomService {
     }
 
     suspend fun updateRoom(roomId: Int, req: RoomUpdateRequest) = dbQuery {
-        val exists = Rooms.selectAll().where { Rooms.id eq roomId }.singleOrNull()
+        Rooms.selectAll().where { Rooms.id eq roomId }.singleOrNull()
             ?: throw NotFoundException("Salle introuvable")
         Rooms.update({ Rooms.id eq roomId }) {
             req.name?.let { v -> it[name] = v }
@@ -89,6 +88,23 @@ object RoomService {
             req.orangeThresholdMinutes?.let { v -> it[orangeThresholdMinutes] = v }
             req.redThresholdMinutes?.let { v -> it[redThresholdMinutes] = v }
         }
+        Unit
+    }
+
+    suspend fun deleteRoom(roomId: Int) = dbQuery {
+        Rooms.selectAll().where { Rooms.id eq roomId }.singleOrNull()
+            ?: throw NotFoundException("Salle introuvable")
+        
+        // 1. On détache les patches de cette salle
+        Patches.update({ Patches.roomId eq roomId }) {
+            it[Patches.roomId] = null
+        }
+        
+        // 2. On supprime l'historique des scans (pour éviter les erreurs de clé étrangère)
+        Scans.deleteWhere { Scans.roomId eq roomId }
+        
+        // 3. On supprime la salle
+        Rooms.deleteWhere { Rooms.id eq roomId }
         Unit
     }
 
@@ -107,7 +123,6 @@ object RoomService {
         }
     }
 
-    /** Enrole (ou re-associe) un patch physique a une salle. Un tagUid deja connu est simplement reassocie. */
     suspend fun enrollPatch(tagUid: String, roomId: Int): PatchDto = dbQuery {
         Rooms.selectAll().where { Rooms.id eq roomId }.singleOrNull()
             ?: throw NotFoundException("Salle introuvable")
