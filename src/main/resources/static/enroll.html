@@ -84,14 +84,25 @@
     renderHeader("header", "Administration");
 
     let rooms = [];
+    let patches = [];
 
     async function loadRooms() {
         try {
-            rooms = await apiFetch("/api/rooms");
+            [rooms, patches] = await Promise.all([
+                apiFetch("/api/rooms"),
+                apiFetch("/api/patches"),
+            ]);
             renderTable();
         } catch (e) {
             console.error(e);
         }
+    }
+
+    // Une salle peut avoir plusieurs badges lies au fil du temps (remplacement d'un badge
+    // defectueux) : on affiche tous les badges de la salle, pas seulement le patch actif
+    // renvoye par /api/rooms.
+    function patchesForRoom(roomId) {
+        return patches.filter(p => p.roomId === roomId);
     }
 
     function renderTable() {
@@ -101,7 +112,27 @@
             return;
         }
 
-        body.innerHTML = rooms.map(r => `
+        body.innerHTML = rooms.map(r => {
+            const roomPatches = patchesForRoom(r.id);
+            const badgesHtml = roomPatches.length === 0
+                ? `<span class="badge ROUGE">❌ Non lié</span>`
+                : roomPatches.map(p => {
+                    if (!p.active) {
+                        return `<div class="pill" style="text-decoration: line-through;" title="${p.tagUid}">🔕 Retiré</div>`;
+                    }
+                    if (p.damaged) {
+                        return `<div style="display:flex; align-items:center; gap:6px;">
+                            <span class="badge ORANGE" title="${p.tagUid}">⚠️ Défectueux</span>
+                            <button class="secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="replaceBadge(${p.id}, '${r.name}')">🔁 Remplacer</button>
+                        </div>`;
+                    }
+                    return `<div style="display:flex; align-items:center; gap:6px;">
+                        <span class="badge VERT" title="${p.tagUid}">✅ Lié</span>
+                        <button class="secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="reportDamaged(${p.id}, '${r.name}')">⚠️ Défectueux</button>
+                    </div>`;
+                }).join("");
+
+            return `
             <tr>
                 <td style="font-weight: 600;">${r.name}</td>
                 <td style="font-size: 0.9rem; color: var(--muted);">${[r.building, r.floor].filter(Boolean).join(" / ") || "-"}</td>
@@ -109,21 +140,61 @@
                     <span style="color: var(--orange)">${r.orangeThresholdMinutes}m</span> /
                     <span style="color: var(--rouge)">${r.redThresholdMinutes}m</span>
                 </td>
-                <td>
-                    ${r.patchUid ?
-                        `<span class="badge VERT" title="${r.patchUid}">✅ Lié</span>` :
-                        `<span class="badge ROUGE">❌ Non lié</span>`
-                    }
-                </td>
+                <td><div style="display: flex; flex-direction: column; gap: 6px;">${badgesHtml}</div></td>
                 <td>
                     <div style="display: flex; gap: 8px;">
                         <button class="secondary" style="padding: 6px 10px; font-size: 0.8rem;" onclick="openRoomModal(${r.id})">✏️ Éditer</button>
-                        <button class="secondary" style="padding: 6px 10px; font-size: 0.8rem;" onclick="linkNfc(${r.id}, '${r.name}')">🔗 NFC</button>
+                        <button class="secondary" style="padding: 6px 10px; font-size: 0.8rem;" onclick="linkNfc(${r.id}, '${r.name}')">🔗 Lier un badge</button>
                         <button class="danger" style="padding: 6px 10px; font-size: 0.8rem;" onclick="deleteRoom(${r.id}, '${r.name}')">🗑️</button>
                     </div>
                 </td>
             </tr>
-        `).join("");
+        `;
+        }).join("");
+    }
+
+    async function reportDamaged(patchId, roomName) {
+        if (!confirm(`Signaler le badge de la salle "${roomName}" comme défectueux ?\nIl ne pourra plus être badgé tant qu'il n'aura pas été remplacé.`)) return;
+        try {
+            await apiFetch(`/api/patches/${patchId}/report-damaged`, { method: "POST" });
+            loadRooms();
+        } catch (e) {
+            alert("Erreur : " + e.message);
+        }
+    }
+
+    async function replaceBadge(oldPatchId, roomName) {
+        let newTagUid = "";
+        if (!("NDEFReader" in window)) {
+            newTagUid = prompt(`Le Web NFC n'est pas supporté.\nSaisissez manuellement l'UID du nouveau badge pour "${roomName}" :`);
+            if (!newTagUid) return;
+        } else {
+            try {
+                alert("Approchez le nouveau badge NFC pour remplacer celui de la salle : " + roomName);
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                const event = await new Promise((resolve, reject) => {
+                    ndef.onreading = resolve;
+                    ndef.onreadingerror = reject;
+                    setTimeout(() => reject(new Error("Timeout : aucun badge détecté")), 10000);
+                });
+                newTagUid = event.serialNumber;
+            } catch (e) {
+                alert("Erreur NFC : " + e.message);
+                return;
+            }
+        }
+
+        try {
+            await apiFetch(`/api/patches/${oldPatchId}/replace`, {
+                method: "POST",
+                body: JSON.stringify({ newTagUid }),
+            });
+            alert("Badge remplacé avec succès ! L'ancien badge est retiré, le nouveau est actif sur la même salle.");
+            loadRooms();
+        } catch (e) {
+            alert("Erreur lors du remplacement : " + e.message);
+        }
     }
 
     function openRoomModal(id = null) {

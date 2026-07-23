@@ -29,9 +29,15 @@ object RoomService {
 
         val guardNames = Guards.selectAll().associate { it[Guards.id].value to it[Guards.fullName] }
 
+        // Une salle peut avoir plusieurs patches actifs a la fois (remplacement d'un badge
+        // defectueux : l'ancien reste actif le temps de la transition, ou remplacement manuel
+        // sans desactivation prealable) : on privilegie un patch sain pour l'affichage, sinon
+        // on retombe sur un patch endommage pour expliquer l'alerte.
         val patchesByRoom = Patches.selectAll()
             .where { Patches.active eq true }
-            .associateBy { it[Patches.roomId]?.value }
+            .toList()
+            .groupBy { it[Patches.roomId]?.value }
+            .mapValues { (_, patches) -> patches.firstOrNull { !it[Patches.damaged] } ?: patches.first() }
 
         val now = Instant.now()
 
@@ -126,7 +132,40 @@ object RoomService {
     suspend fun enrollPatch(tagUid: String, roomId: Int): PatchDto = dbQuery {
         Rooms.selectAll().where { Rooms.id eq roomId }.singleOrNull()
             ?: throw NotFoundException("Salle introuvable")
+        enrollPatchInTransaction(tagUid, roomId)
+    }
 
+    suspend fun setPatchDamaged(patchId: Int, damaged: Boolean) = dbQuery {
+        Patches.selectAll().where { Patches.id eq patchId }.singleOrNull()
+            ?: throw NotFoundException("Patch introuvable")
+        Patches.update({ Patches.id eq patchId }) { it[Patches.damaged] = damaged }
+        Unit
+    }
+
+    /**
+     * Remplace un patch defectueux par un nouveau, lie a la meme salle. L'ancien patch est
+     * retire (desactive) plutot que supprime : son historique de scans (Scans.patch_id) reste
+     * intact pour la tracabilite, et plusieurs patches peuvent donc etre lies dans le temps a
+     * une meme salle.
+     */
+    suspend fun replacePatch(oldPatchId: Int, newTagUid: String): PatchDto = dbQuery {
+        val oldPatch = Patches.selectAll().where { Patches.id eq oldPatchId }.singleOrNull()
+            ?: throw NotFoundException("Patch introuvable")
+        val roomId = oldPatch[Patches.roomId]?.value
+            ?: throw ConflictException("Ce patch n'est associe a aucune salle, impossible de le remplacer")
+        if (oldPatch[Patches.tagUid] == newTagUid) {
+            throw ConflictException("Le nouveau badge doit avoir un identifiant different de l'ancien")
+        }
+
+        Patches.update({ Patches.id eq oldPatchId }) {
+            it[damaged] = true
+            it[active] = false
+        }
+
+        enrollPatchInTransaction(newTagUid, roomId)
+    }
+
+    private fun enrollPatchInTransaction(tagUid: String, roomId: Int): PatchDto {
         val existing = Patches.selectAll().where { Patches.tagUid eq tagUid }.singleOrNull()
         val patchId = if (existing != null) {
             val id = existing[Patches.id].value
@@ -144,13 +183,7 @@ object RoomService {
             }.value
         }
 
-        PatchDto(patchId, tagUid, roomId, Rooms.selectAll().where { Rooms.id eq roomId }.single()[Rooms.name], true, false)
-    }
-
-    suspend fun setPatchDamaged(patchId: Int, damaged: Boolean) = dbQuery {
-        Patches.selectAll().where { Patches.id eq patchId }.singleOrNull()
-            ?: throw NotFoundException("Patch introuvable")
-        Patches.update({ Patches.id eq patchId }) { it[Patches.damaged] = damaged }
-        Unit
+        val roomName = Rooms.selectAll().where { Rooms.id eq roomId }.single()[Rooms.name]
+        return PatchDto(patchId, tagUid, roomId, roomName, true, false)
     }
 }

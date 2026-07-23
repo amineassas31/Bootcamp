@@ -9,6 +9,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import rondes.db.GuardRole
 import rondes.model.PatchEnrollRequest
+import rondes.model.PatchReplaceRequest
 import rondes.service.RoomService
 import rondes.service.SupervisionHub
 
@@ -41,6 +42,15 @@ fun Route.patchRoutes() {
             RoomService.setPatchDamaged(id, damaged = false)
             SupervisionHub.broadcastRoomsUpdated()
             call.respond(HttpStatusCode.NoContent)
+        }
+        post("/{id}/replace") {
+            val guard = call.authedGuard()
+            guard.requireRole(GuardRole.CHEF_DE_POSTE, GuardRole.DIRECTION)
+            val id = call.parameters["id"]!!.toInt()
+            val req = call.receive<PatchReplaceRequest>()
+            val patch = RoomService.replacePatch(id, req.newTagUid)
+            SupervisionHub.broadcastRoomsUpdated()
+            call.respond(HttpStatusCode.Created, patch)
         }
     }
 }

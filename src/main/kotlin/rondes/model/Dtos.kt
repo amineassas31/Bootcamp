@@ -61,6 +61,9 @@ data class PatchEnrollRequest(val tagUid: String, val roomId: Int)
 data class PatchDamagedRequest(val damaged: Boolean)
 
 @Serializable
+data class PatchReplaceRequest(val newTagUid: String)
+
+@Serializable
 data class PatchDto(
     val id: Int,
     val tagUid: String,
