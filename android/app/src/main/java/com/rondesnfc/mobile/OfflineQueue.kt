@@ -12,9 +12,9 @@ import org.json.JSONObject
 class OfflineQueue(context: Context) {
     private val prefs = context.getSharedPreferences("rondes_offline_queue", Context.MODE_PRIVATE)
 
-    fun add(tagUid: String, scannedAtIso: String) {
+    fun add(id: String, tagUid: String, scannedAtIso: String) {
         val items = readAll()
-        items.put(JSONObject().put("tagUid", tagUid).put("scannedAt", scannedAtIso))
+        items.put(JSONObject().put("id", id).put("tagUid", tagUid).put("scannedAt", scannedAtIso))
         prefs.edit().putString("items", items.toString()).apply()
     }
 

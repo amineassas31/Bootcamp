@@ -31,6 +31,11 @@
             <button onclick="handleTagRead(document.getElementById('manualUid').value.trim())" style="white-space: nowrap;">Valider</button>
         </div>
     </div>
+
+    <div class="card">
+        <h3 style="margin-top: 0; font-size: 1rem;">Derniers badges</h3>
+        <div id="historyList"></div>
+    </div>
 </main>
 <script src="app-common.js"></script>
 <script>
@@ -39,7 +44,10 @@
 
     const statusEl = document.getElementById("status");
     const queueInfoEl = document.getElementById("queueInfo");
+    const historyListEl = document.getElementById("historyList");
     const QUEUE_KEY = "rondes_offline_queue";
+    const HISTORY_KEY = "rondes_scan_history";
+    const HISTORY_MAX = 20;
 
     function readQueue() {
         try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch (e) { return []; }
@@ -56,6 +64,57 @@
     }
     refreshQueueInfo();
 
+    // Historique local des derniers badges (tous statuts), distinct de la file d'attente
+    // qui ne garde que ce qui reste a renvoyer. Permet au gardien de voir son activite
+    // recente meme sans reseau.
+    function readHistory() {
+        try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch (e) { return []; }
+    }
+    function writeHistory(items) { localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); }
+
+    function addHistoryEntry(entry) {
+        const items = readHistory();
+        items.unshift(entry);
+        writeHistory(items.slice(0, HISTORY_MAX));
+        renderHistory();
+    }
+
+    function updateHistoryEntry(id, patch) {
+        const items = readHistory();
+        const idx = items.findIndex((item) => item.id === id);
+        if (idx === -1) return;
+        items[idx] = Object.assign(items[idx], patch);
+        writeHistory(items);
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const items = readHistory();
+        if (items.length === 0) {
+            historyListEl.innerHTML = '<p class="pill">Aucun badge pour le moment.</p>';
+            return;
+        }
+        historyListEl.innerHTML = items.map((item) => {
+            const time = new Date(item.scannedAt).toLocaleString("fr-FR");
+            const cls = item.status === "synced" ? "VERT" : item.status === "error" ? "ROUGE" : "ORANGE";
+            const label = item.status === "synced" ? (item.roomName || "Synchronisé")
+                : item.status === "error" ? (item.detail || "Refusé")
+                : "En attente de synchronisation";
+            return `<div class="row-${cls}" style="padding: 10px 14px; margin-bottom: 8px; border-radius: 8px; background: rgba(255,255,255,0.03);">
+                <div style="display:flex; justify-content: space-between; align-items: center; gap: 10px;">
+                    <span style="font-family: monospace;">${item.tagUid}</span>
+                    <span class="badge ${cls}">${label}</span>
+                </div>
+                <div class="pill" style="margin-top:4px;">${time}</div>
+            </div>`;
+        }).join("");
+    }
+    renderHistory();
+
+    function newId() {
+        return Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+    }
+
     async function sendScan(tagUid, scannedAt) {
         return apiFetch("/api/scan", {
             method: "POST",
@@ -66,6 +125,9 @@
     async function handleTagRead(tagUid) {
         if (!tagUid) return;
         const scannedAt = new Date().toISOString();
+        const id = newId();
+        addHistoryEntry({ id, tagUid, scannedAt, status: "pending" });
+
         statusEl.className = "status-line";
         statusEl.textContent = "Envoi en cours...";
         try {
@@ -73,6 +135,7 @@
             statusEl.className = "status-line ok";
             statusEl.innerHTML = `<strong>Succès !</strong><br>${result.roomName} contrôlée par ${result.guardName}` +
                 (result.offlineSync ? "<br><small>Synchronisé depuis le mode hors-ligne</small>" : "");
+            updateHistoryEntry(id, { status: "synced", roomName: result.roomName });
 
             // Petit feedback visuel
             document.body.style.backgroundColor = "#064e3b";
@@ -81,14 +144,16 @@
         } catch (e) {
             if (e instanceof TypeError || e.message.includes("Failed to fetch")) {
                 const q = readQueue();
-                q.push({ tagUid, scannedAt });
+                q.push({ id, tagUid, scannedAt });
                 writeQueue(q);
                 refreshQueueInfo();
                 statusEl.className = "status-line err";
                 statusEl.textContent = "Hors ligne : Scan enregistré localement. Il sera envoyé dès le retour du réseau.";
+                updateHistoryEntry(id, { status: "pending", detail: "Hors ligne, en attente de synchronisation" });
             } else {
                 statusEl.className = "status-line err";
                 statusEl.textContent = "Erreur : " + e.message;
+                updateHistoryEntry(id, { status: "error", detail: e.message });
             }
         }
     }
@@ -99,7 +164,8 @@
         const remaining = [];
         for (const item of q) {
             try {
-                await sendScan(item.tagUid, item.scannedAt);
+                const result = await sendScan(item.tagUid, item.scannedAt);
+                if (item.id) updateHistoryEntry(item.id, { status: "synced", roomName: result.roomName });
             } catch (e) {
                 remaining.push(item);
             }
