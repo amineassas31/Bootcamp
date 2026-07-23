@@ -4,6 +4,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
@@ -33,6 +34,13 @@ fun Route.roomRoutes() {
             val id = call.parameters["id"]!!.toInt()
             val req = call.receive<RoomUpdateRequest>()
             RoomService.updateRoom(id, req)
+            call.respond(HttpStatusCode.NoContent)
+        }
+        delete("/{id}") {
+            val guard = call.authedGuard()
+            guard.requireRole(GuardRole.CHEF_DE_POSTE, GuardRole.DIRECTION)
+            val id = call.parameters["id"]!!.toInt()
+            RoomService.deleteRoom(id)
             call.respond(HttpStatusCode.NoContent)
         }
     }
